@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from trident_trader.features.lambda_world import compute_lambda
 from trident_trader.world.schemas import WorldSnapshot
@@ -6,7 +6,7 @@ from trident_trader.world.schemas import WorldSnapshot
 
 def test_compute_lambda_bounded() -> None:
     snapshot = WorldSnapshot(
-        ts=datetime.now(tz=timezone.utc),
+        ts=datetime.now(tz=UTC),
         spread_bps=1.0,
         depth_score=0.8,
         realized_vol=0.9,

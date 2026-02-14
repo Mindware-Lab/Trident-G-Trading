@@ -1,8 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from trident_trader.features.lambda_world import compute_lambda
 from trident_trader.world.adapters.gdelt import aggregate_intensity, load_gdelt_events
@@ -31,7 +32,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 
 def _cmd_compute_lambda(args: argparse.Namespace) -> int:
     snapshot = WorldSnapshot(
-        ts=datetime.now(tz=timezone.utc),
+        ts=datetime.now(tz=UTC),
         spread_bps=args.spread_bps,
         depth_score=args.depth_score,
         realized_vol=args.realized_vol,
@@ -102,7 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    return args.func(args)
+    func: Callable[[argparse.Namespace], int] = args.func
+    return int(func(args))
 
 
 if __name__ == "__main__":
