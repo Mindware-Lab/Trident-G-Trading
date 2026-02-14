@@ -1,0 +1,10 @@
+﻿id: O001
+name: mean_reversion
+status: draft
+trigger_cue: "short-term excursion vs rolling mean"
+checks:
+  - spread within threshold
+  - regime not high-volatility shock
+boundaries:
+  - fails in persistent one-way trend
+stop_rule: "disable after 3 consecutive stop-outs"

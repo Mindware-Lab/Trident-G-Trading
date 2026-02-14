@@ -1,0 +1,11 @@
+﻿from __future__ import annotations
+
+from trident_trader.operators.base import Signal
+
+
+class BreakoutOperator:
+    name = "breakout"
+
+    def on_event(self, event: dict[str, object]) -> Signal | None:
+        _ = event
+        return None

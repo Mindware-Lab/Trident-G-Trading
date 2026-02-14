@@ -1,0 +1,10 @@
+﻿id: O002
+name: breakout
+status: draft
+trigger_cue: "range compression then expansion"
+checks:
+  - volume confirmation
+  - no event blackout flag
+boundaries:
+  - prone to false breaks in noisy sessions
+stop_rule: "disable after daily loss cap reached"
