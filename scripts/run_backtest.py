@@ -5,8 +5,10 @@ import random
 import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 
 from trident_trader.backtest.engine import BacktestEngine
+from trident_trader.world.loaders.csv_bars import iter_csv_bars, merge_sorted
 from trident_trader.world.schemas import Bar
 
 
@@ -73,13 +75,19 @@ def main() -> None:
     parser.add_argument("--timescales", default="configs/timescales.toml")
     parser.add_argument("--universe", default="configs/universes/four_streams.toml")
     parser.add_argument("--lambda-gate", dest="lambda_gate", default="configs/lambda_gate.toml")
+    parser.add_argument(
+        "--data-root",
+        default=".",
+        help="Root folder for relative data_file entries in universe config.",
+    )
     args = parser.parse_args()
 
     timescales_cfg = _load_toml(Path(args.timescales))
     universe_cfg = _load_toml(Path(args.universe))
     lambda_cfg = _load_toml(Path(args.lambda_gate))
 
-    symbols = [item["symbol"] for item in universe_cfg["streams"]]
+    streams_cfg = cast(list[dict[str, Any]], universe_cfg["streams"])
+    symbols = [cast(str, item["symbol"]) for item in streams_cfg]
     periods = {
         "fast": _parse_duration(timescales_cfg["timescales"]["fast"]),
         "medium": _parse_duration(timescales_cfg["timescales"]["medium"]),
@@ -110,7 +118,20 @@ def main() -> None:
     if args.smoke:
         bars = _generate_smoke_bars(symbols=symbols, base_period=base_period)
     else:
-        bars = _generate_smoke_bars(symbols=symbols, base_period=base_period, steps=1200)
+        data_root = Path(args.data_root)
+        streams: list[list[Bar]] = []
+        for stream in streams_cfg:
+            symbol = cast(str, stream["symbol"])
+            data_file = cast(str | None, stream.get("data_file"))
+            if not data_file:
+                raise ValueError(
+                    f"Universe stream for {symbol} is missing required data_file field."
+                )
+            path = data_root / data_file
+            if not path.exists():
+                raise FileNotFoundError(f"Missing data file for {symbol}: {path}")
+            streams.append(list(iter_csv_bars(path=path, symbol=symbol)))
+        bars = list(merge_sorted(streams))
 
     engine.run(bars)
 

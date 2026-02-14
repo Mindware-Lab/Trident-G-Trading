@@ -8,6 +8,7 @@ venue = "CME"
 symbol = "MES"
 asset = "index_futures"
 currency = "USD"
+data_file = "data/raw/MES_1m.csv"
 
 [[streams]]
 id = "rates"
@@ -15,6 +16,7 @@ venue = "CME"
 symbol = "ZN"
 asset = "rates_futures"
 currency = "USD"
+data_file = "data/raw/ZN_1m.csv"
 
 [[streams]]
 id = "energy"
@@ -22,6 +24,7 @@ venue = "CME"
 symbol = "CL"
 asset = "energy_futures"
 currency = "USD"
+data_file = "data/raw/CL_1m.csv"
 
 [[streams]]
 id = "fx"
@@ -29,3 +32,4 @@ venue = "CME"
 symbol = "6E"
 asset = "fx_futures"
 currency = "USD"
+data_file = "data/raw/6E_1m.csv"
