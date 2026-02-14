@@ -1,0 +1,12 @@
+[clock]
+base_resolution = "1m"
+timezone = "UTC"
+
+[timescales]
+fast = "5m"
+medium = "60m"
+slow = "1d"
+
+[alignment]
+anchor = "UTC"
+session = "24x5"

@@ -1,0 +1,31 @@
+[universe]
+name = "four_streams_core"
+description = "4 parallel streams for cross-regime robustness"
+
+[[streams]]
+id = "eq_index"
+venue = "CME"
+symbol = "MES"
+asset = "index_futures"
+currency = "USD"
+
+[[streams]]
+id = "rates"
+venue = "CME"
+symbol = "ZN"
+asset = "rates_futures"
+currency = "USD"
+
+[[streams]]
+id = "energy"
+venue = "CME"
+symbol = "CL"
+asset = "energy_futures"
+currency = "USD"
+
+[[streams]]
+id = "fx"
+venue = "CME"
+symbol = "6E"
+asset = "fx_futures"
+currency = "USD"

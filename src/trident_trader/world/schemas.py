@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,3 +18,25 @@ class WorldSnapshot:
     fee_bps: float
     news_intensity: float
     news_tone: float = 0.0
+
+
+@dataclass(frozen=True)
+class Bar:
+    """Canonical OHLCV bar ending at ts (UTC)."""
+
+    ts: datetime
+    symbol: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    bid: float | None = None
+    ask: float | None = None
+
+
+@dataclass(frozen=True)
+class NewsEvent:
+    ts: datetime
+    source: str
+    intensity: float
