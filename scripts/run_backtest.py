@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from trident_trader.backtest.engine import BacktestEngine
+from trident_trader.backtest.metrics import summarize
+from trident_trader.execution.oms import OrderIntent, SimulatedOMS
+from trident_trader.portfolio.book import PortfolioBook
+from trident_trader.risk.limits import RiskLimits, RiskState, check_order
 from trident_trader.world.loaders.csv_bars import iter_csv_bars, merge_sorted
 from trident_trader.world.schemas import Bar
 
@@ -96,15 +100,70 @@ def main() -> None:
     base_period = _parse_duration(timescales_cfg["clock"]["base_resolution"])
 
     decisions: list[dict[str, object]] = []
+    book = PortfolioBook(initial_cash=1_000_000.0)
+    oms = SimulatedOMS(slippage_bps=0.6, fee_bps=0.2)
+    limits = RiskLimits(
+        max_notional_per_order=250_000.0, max_daily_loss=20_000.0, max_gross_notional=1_000_000.0
+    )
+    risk_state = RiskState()
+    spread_samples: list[float] = []
+    slippage_samples: list[float] = []
 
     def _on_decision(ctx: dict[str, object]) -> None:
-        gate = ctx["gate"]
+        gate = cast(dict[str, object], ctx["gate"])
+        ts = cast(datetime, ctx["ts"])
+        medium_bars = cast(dict[str, Bar], ctx["medium_bars"])
+
+        # Simple baseline policy for infrastructure validation:
+        # armed -> hold +1 unit each stream, disarmed -> flat.
+        for symbol in symbols:
+            target_qty = 1.0 if cast(bool, gate["armed"]) else 0.0
+            current_qty = book.qty(symbol)
+            delta = target_qty - current_qty
+            if abs(delta) < 1e-12:
+                continue
+
+            side = "buy" if delta > 0 else "sell"
+            qty = abs(delta)
+            bar = medium_bars[symbol]
+
+            intent = OrderIntent(symbol=symbol, side=side, qty=qty)
+            preview_fill = oms.execute(intent, bar)
+
+            gross_after = 0.0
+            for sym in symbols:
+                q = book.qty(sym)
+                if sym == symbol:
+                    q += delta
+                gross_after += abs(q * medium_bars[sym].close)
+
+            reduce_only = abs(target_qty) < abs(current_qty)
+            allowed = check_order(
+                limits=limits,
+                state=risk_state,
+                order_notional=preview_fill.notional,
+                gross_notional_after=gross_after,
+                daily_pnl=book.daily_pnl(ts),
+                reduce_only=reduce_only,
+            )
+            if not allowed:
+                continue
+
+            book.apply_fill(preview_fill, ts=ts)
+            spread_samples.append(preview_fill.spread_bps)
+            slippage_samples.append(preview_fill.slippage_bps)
+
+        prices = {sym: medium_bars[sym].close for sym in symbols}
+        equity = book.mark_to_market(prices, ts=ts)
+
         decisions.append(
             {
-                "ts": str(ctx["ts"]),
-                "armed": gate["armed"],
-                "lambda_global": round(gate["lambda_global"], 4),
-                "good_streams": gate["good_streams"],
+                "ts": str(ts),
+                "armed": cast(bool, gate["armed"]),
+                "lambda_global": round(cast(float, gate["lambda_global"]), 4),
+                "good_streams": cast(int, gate["good_streams"]),
+                "equity": round(equity, 2),
+                "daily_pnl": round(book.daily_pnl(ts), 2),
             }
         )
 
@@ -135,10 +194,24 @@ def main() -> None:
 
     engine.run(bars)
 
-    armed_steps = sum(1 for d in decisions if d["armed"])
+    stats = summarize(
+        equity_curve=book.equity_curve,
+        turnover=book.turnover,
+        spread_samples=spread_samples,
+        slippage_samples=slippage_samples,
+    )
+
+    armed_steps = sum(1 for d in decisions if cast(bool, d["armed"]))
     print(
-        f"Backtest complete: decisions={len(decisions)} armed={armed_steps} "
-        f"rate={(armed_steps / max(1, len(decisions))):.2%}"
+        "Backtest complete: "
+        f"decisions={len(decisions)} "
+        f"armed={armed_steps} "
+        f"rate={(armed_steps / max(1, len(decisions))):.2%} "
+        f"return={stats.total_return:.2%} "
+        f"max_dd={stats.max_drawdown:.2%} "
+        f"turnover={stats.turnover:.2f} "
+        f"avg_spread_bps={stats.avg_spread_bps:.3f} "
+        f"avg_slippage_bps={stats.avg_slippage_bps:.3f}"
     )
 
 
