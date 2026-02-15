@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from trident_trader.world.schemas import Bar
 
 
-def _floor_time(ts: datetime, period: timedelta) -> datetime:
+def floor_time(ts: datetime, period: timedelta) -> datetime:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=UTC)
     else:
@@ -35,7 +35,7 @@ class TimeBarConsolidator:
     _last_ask: float | None = None
 
     def update(self, bar: Bar) -> None:
-        bucket_start = _floor_time(bar.ts, self.period)
+        bucket_start = floor_time(bar.ts, self.period)
 
         if self._bucket_start is None:
             self._start_new_bucket(bucket_start, bar)

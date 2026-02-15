@@ -1,6 +1,7 @@
 from trident_trader.features.mutual_info import (
     categorical_mutual_information,
     continuous_mutual_information,
+    estimate_mi_regression,
     summarize_mi,
 )
 
@@ -20,3 +21,10 @@ def test_continuous_mi_dependent_is_positive() -> None:
 def test_summarize_mi_falling() -> None:
     summary = summarize_mi([0.2, 0.21, 0.19, 0.10, 0.08])
     assert summary.falling
+
+
+def test_estimate_mi_regression_dependent_positive() -> None:
+    features = [[float(i)] for i in range(1, 80)]
+    targets = [2.0 * f[0] + 1.0 for f in features]
+    result = estimate_mi_regression(features, targets)
+    assert result.value > 0.0

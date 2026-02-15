@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from trident_trader.features.lambda_world import (
@@ -12,8 +12,8 @@ from trident_trader.features.lambda_world import (
     spread_bps_from_bar,
 )
 from trident_trader.features.rolling_state import RollingFeatureState
-from trident_trader.world.consolidators import TimeBarConsolidator
-from trident_trader.world.schemas import Bar
+from trident_trader.world.consolidators import TimeBarConsolidator, floor_time
+from trident_trader.world.schemas import Bar, NewsEvent
 
 
 @dataclass
@@ -40,6 +40,7 @@ class BacktestEngine:
         self.latest_medium: dict[str, Bar] = {}
         self.latest_slow: dict[str, Bar] = {}
         self.rolling_state: dict[str, RollingFeatureState] = {}
+        self.news_by_bucket_end: dict[datetime, float] = {}
 
         for symbol in symbols:
             self.rolling_state[symbol] = RollingFeatureState(expected_period=periods["medium"])
@@ -69,8 +70,13 @@ class BacktestEngine:
 
         return _callback
 
-    def run(self, bars: Iterable[Bar]) -> None:
-        for bar in bars:
+    def run(self, events: Iterable[Bar | NewsEvent]) -> None:
+        for event in events:
+            if isinstance(event, NewsEvent):
+                self._on_news(event)
+                continue
+
+            bar = event
             if bar.symbol not in self.streams:
                 continue
             stream = self.streams[bar.symbol]
@@ -85,9 +91,20 @@ class BacktestEngine:
 
     def _on_medium(self, symbol: str, bar: Bar) -> None:
         self.latest_medium[symbol] = bar
-        self.rolling_state[symbol].update(ts=bar.ts, close=bar.close, volume=bar.volume)
+        event_intensity = self.news_by_bucket_end.get(bar.ts, 0.0)
+        self.rolling_state[symbol].update(
+            ts=bar.ts,
+            close=bar.close,
+            volume=bar.volume,
+            event_intensity=event_intensity,
+        )
         if len(self.latest_medium) != len(self.symbols):
             return
+
+        # Prevent unbounded growth of old news buckets.
+        stale_keys = [key for key in self.news_by_bucket_end if key < bar.ts]
+        for key in stale_keys:
+            self.news_by_bucket_end.pop(key, None)
 
         gate = self._lambda_gate()
         ctx: dict[str, object] = {
@@ -100,6 +117,12 @@ class BacktestEngine:
 
     def _on_slow(self, symbol: str, bar: Bar) -> None:
         self.latest_slow[symbol] = bar
+
+    def _on_news(self, event: NewsEvent) -> None:
+        bucket_start = floor_time(event.ts, self.periods["medium"])
+        bucket_end = bucket_start + self.periods["medium"]
+        prev = self.news_by_bucket_end.get(bucket_end, 0.0)
+        self.news_by_bucket_end[bucket_end] = prev + event.intensity
 
     def _lambda_gate(self) -> dict[str, object]:
         lambda_section = cast(LambdaConfig, self.lambda_cfg["lambda"])
@@ -129,6 +152,7 @@ class BacktestEngine:
                 "vol_of_vol": m.vol_of_vol,
                 "corr_shock": corr_shock,
                 "event_intensity_z": m.event_intensity_z,
+                "last_return": m.last_return,
             }
 
         values = sorted(per_stream.values())

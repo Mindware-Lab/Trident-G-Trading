@@ -1,0 +1,13 @@
+[news]
+source = "gdelt"
+timezone = "UTC"
+resolution = "60m"
+
+[news.filters]
+mode = "broad"
+keywords = ["inflation", "rates", "oil", "war", "sanctions", "fed", "ecb"]
+
+[news.output]
+path = "data/news/gdelt_intensity.parquet"
+column_ts = "ts"
+column_intensity = "count"
