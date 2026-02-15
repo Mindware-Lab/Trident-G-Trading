@@ -12,6 +12,8 @@ from trident_trader.backtest.engine import BacktestEngine
 from trident_trader.backtest.metrics import summarize
 from trident_trader.core.operator_selector_entropy_mi import OperatorSelectorEntropyMI
 from trident_trader.execution.oms import OrderIntent, SimulatedOMS
+from trident_trader.features.relational_graph import RelationalGraphMap
+from trident_trader.features.successor_map import SuccessorMap
 from trident_trader.portfolio.book import PortfolioBook
 from trident_trader.risk.limits import RiskLimits, RiskState, check_order
 from trident_trader.world.loaders.csv_bars import iter_csv_bars, merge_sorted
@@ -194,6 +196,8 @@ def main() -> None:
     )
     risk_state = RiskState()
     selector = OperatorSelectorEntropyMI()
+    graph_map = RelationalGraphMap(symbols=symbols)
+    successor_map = SuccessorMap()
     spread_samples: list[float] = []
     slippage_samples: list[float] = []
 
@@ -225,6 +229,15 @@ def main() -> None:
         mismatch_proxy = sum(
             abs(inputs[s].get("last_return", 0.0)) for s in symbols if s in inputs
         ) / max(1, len(symbols))
+
+        # Graph-cognitive map update on every medium tick.
+        returns_by_symbol = {s: inputs.get(s, {}).get("last_return", 0.0) for s in symbols}
+        relational_state = graph_map.update(returns_by_symbol)
+        sr_snapshot = None
+        if cast(bool, gate.get("armed", False)):
+            # SR update only when Lambda gate says the world is clean/learnable.
+            sr_snapshot = successor_map.update(relational_state)
+
         operator, mi_score = selector.select(
             armed=cast(bool, gate.get("armed", False)),
             mismatch=mismatch_proxy,
@@ -282,6 +295,13 @@ def main() -> None:
                 "operator": operator,
                 "mi_score": round(mi_score, 4),
                 "temperature": round(selector.temperature, 4),
+                "relational_cluster": relational_state.cluster_label,
+                "relational_coupling": round(relational_state.coupling_index, 4),
+                "relational_state_key": relational_state.motif_key,
+                "sr_state_id": (sr_snapshot.state_id if sr_snapshot is not None else None),
+                "sr_uncertainty": (
+                    round(sr_snapshot.uncertainty, 4) if sr_snapshot is not None else None
+                ),
                 "lambda_global": round(cast(float, gate["lambda_global"]), 4),
                 "good_streams": cast(int, gate["good_streams"]),
                 "equity": round(equity, 2),
