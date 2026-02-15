@@ -379,3 +379,85 @@ python scripts/analyze_walkforward.py --input-dir reports/walkforward/databento_
 ::contentReference[oaicite:8]{index=8}
 ```
 
+# Automated Trading: What Turns This Into a Live System
+
+This repo can become **fully automated trading** once the backtest engine is connected to (1) live data, (2) broker execution, and (3) non-negotiable risk controls.
+
+---
+
+## 1) A live “World” feed (market + optional news)
+
+Swap your historical loader for a **live data client** that emits the **same canonical events**:
+
+- `Bar`
+- `NewsEvent`
+
+Keeping the same `Bar | NewsEvent` interface means you do **not** rewrite strategy logic when moving from backtest → live.
+
+If you use Databento, it is designed so **live and historical market replay share the same interfaces/data structures**, and it supports **intraday replay (last 24 hours)** for “today rehearsal” without placing orders.  
+Source: Databento Live API overview. https://databento.com/live
+
+---
+
+## 2) A broker execution adapter (orders + fills + positions)
+
+Your strategy must translate:
+
+**intent → orders → fills/positions**
+
+That requires an execution/OMS adapter that can:
+
+- place orders (market/limit/brackets)
+- modify/cancel orders
+- read open orders and fills
+- reconcile broker positions vs internal state
+
+Interactive Brokers’ **TWS API / IB Gateway** supports programmatic order placement, monitoring, modification, and cancellation (including advanced order types).  
+Source: IBKR TWS API documentation. https://www.interactivebrokers.com/campus/ibkr-api-page/trader-workstation-api/
+
+---
+
+## 3) A risk layer and “kill switch” (non-negotiable)
+
+This is what makes unattended operation survivable:
+
+- **hard limits**: max position per symbol, max daily loss, max leverage/margin use, max order rate  
+- **kill switch**: flatten-and-disable on breach or critical failures  
+- **disconnect handling**: stop trading safely, reconcile state on reconnect  
+- **data integrity checks**: halt if the feed becomes “unclean” (e.g., gaps, outliers, stale clocks)
+
+EU **RTS 6** expects controls including the ability to **switch off** algorithmic trading systems/algorithms, and to re-test after substantial changes.  
+Source: RTS 6 (MiFID II). https://ec.europa.eu/finance/securities/docs/isd/mifid/rts/160719-rts-6_en.pdf
+
+The UK **FCA** emphasises governance, testing/deployment protocols, risk controls, and ongoing monitoring for algorithmic trading.  
+Source: FCA multi-firm review. https://www.fca.org.uk/publications/multi-firm-reviews/algorithmic-trading-controls-high-level-observations
+
+---
+
+# The practical ladder (so it’s genuinely “automated”)
+
+## Step 1 — Shadow mode (live feed, no orders)
+
+- Run the full agent on live data
+- **Do not place orders**
+- Log what it *would* do (including Λ, SR uncertainty, operator choice)
+- Compare behaviour to backtest expectations
+
+## Step 2 — Paper trading (broker sandbox)
+
+- Same code path, broker paper account
+- Validate execution logic and failure modes (disconnects, rejects, partial fills)
+- Treat results as **execution testing**, not proof of edge
+
+## Step 3 — Micro live (minimal size, strict limits)
+
+- Start with **1 micro contract**
+- Trade **one instrument first**
+- Use conservative daily loss limits
+- Ensure kill switch is proven and tested
+
+## Step 4 — Scale slowly
+
+- Increase **size _or_ number of instruments**, not both at once
+- Only scale after weeks of stable behaviour across different regimes
+
