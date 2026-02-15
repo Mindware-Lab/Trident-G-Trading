@@ -21,6 +21,25 @@ def test_successor_map_updates_transitions() -> None:
     sr.update(s1)
     snap = sr.update(s2)
     assert snap.state_id in {0, 1}
-    # After one transition, some confidence mass should exist.
-    if snap.top_successors:
-        assert snap.top_successors[0][1] >= 0.0
+    assert 0.0 <= snap.uncertainty <= 1.0
+
+
+def test_sr_uncertainty_spikes_around_transition_change() -> None:
+    sr = SuccessorMap(alpha=0.3, gamma=0.9)
+    a = _state("a")
+    b = _state("b")
+
+    # Stable regime: a -> a repeatedly, low transition entropy.
+    stable_unc: list[float] = []
+    for _ in range(30):
+        snap = sr.update(a, learn=True)
+        stable_unc.append(snap.uncertainty)
+    stable_level = stable_unc[-1]
+
+    # Shock regime: alternate between a and b, uncertainty should rise.
+    shock_unc: list[float] = []
+    for i in range(20):
+        snap = sr.update(a if i % 2 == 0 else b, learn=True)
+        shock_unc.append(snap.uncertainty)
+
+    assert max(shock_unc) > stable_level

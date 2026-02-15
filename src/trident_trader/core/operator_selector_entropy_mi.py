@@ -19,6 +19,7 @@ class SelectorConfig:
     mi_window: int = 240
     mi_n_min: int = 200
     mismatch_alert: float = 0.15
+    sr_uncertainty_weight: float = 0.6
 
 
 @dataclass
@@ -48,7 +49,11 @@ class OperatorSelectorEntropyMI:
         self._reward_hist.append(reward)
 
     def select(
-        self, armed: bool, mismatch: float, feature_vector: list[float]
+        self,
+        armed: bool,
+        mismatch: float,
+        feature_vector: list[float],
+        sr_uncertainty: float = 0.0,
     ) -> tuple[str, float]:
         if not armed:
             return "flat", 0.0
@@ -80,6 +85,12 @@ class OperatorSelectorEntropyMI:
             self._tau = min(self.config.tau_max, self._tau + self.config.tau_step)
         else:
             self._tau = max(self.config.tau_min, self._tau - 0.5 * self.config.tau_step)
+
+        # Map-level uncertainty increases exploration pressure.
+        self._tau = min(
+            self.config.tau_max,
+            self._tau + self.config.sr_uncertainty_weight * max(0.0, sr_uncertainty),
+        )
 
         probs = softmax(scores, self._tau)
         index = self._rng.choices(range(len(self.config.operators)), weights=probs, k=1)[0]

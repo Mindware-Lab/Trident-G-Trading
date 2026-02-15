@@ -233,15 +233,14 @@ def main() -> None:
         # Graph-cognitive map update on every medium tick.
         returns_by_symbol = {s: inputs.get(s, {}).get("last_return", 0.0) for s in symbols}
         relational_state = graph_map.update(returns_by_symbol)
-        sr_snapshot = None
-        if cast(bool, gate.get("armed", False)):
-            # SR update only when Lambda gate says the world is clean/learnable.
-            sr_snapshot = successor_map.update(relational_state)
+        armed = cast(bool, gate.get("armed", False))
+        sr_snapshot = successor_map.update(relational_state, learn=armed)
 
         operator, mi_score = selector.select(
-            armed=cast(bool, gate.get("armed", False)),
+            armed=armed,
             mismatch=mismatch_proxy,
             feature_vector=feature_vector,
+            sr_uncertainty=sr_snapshot.uncertainty,
         )
 
         for symbol in symbols:
@@ -298,10 +297,11 @@ def main() -> None:
                 "relational_cluster": relational_state.cluster_label,
                 "relational_coupling": round(relational_state.coupling_index, 4),
                 "relational_state_key": relational_state.motif_key,
-                "sr_state_id": (sr_snapshot.state_id if sr_snapshot is not None else None),
-                "sr_uncertainty": (
-                    round(sr_snapshot.uncertainty, 4) if sr_snapshot is not None else None
-                ),
+                "sr_state_id": sr_snapshot.state_id,
+                "sr_uncertainty": round(sr_snapshot.uncertainty, 4),
+                "sr_transition_entropy": round(sr_snapshot.transition_entropy, 4),
+                "sr_td_error_norm": round(sr_snapshot.td_error_norm, 4),
+                "sr_learned": sr_snapshot.learned,
                 "lambda_global": round(cast(float, gate["lambda_global"]), 4),
                 "good_streams": cast(int, gate["good_streams"]),
                 "equity": round(equity, 2),

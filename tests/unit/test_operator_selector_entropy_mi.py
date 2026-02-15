@@ -20,3 +20,17 @@ def test_selector_temperature_rises_with_high_mismatch() -> None:
     before = selector.temperature
     selector.select(armed=True, mismatch=0.5, feature_vector=[0.1, 0.2, 0.3])
     assert selector.temperature > before
+
+
+def test_selector_temperature_rises_with_sr_uncertainty() -> None:
+    selector = OperatorSelectorEntropyMI(
+        config=SelectorConfig(mi_n_min=999, tau_init=1.0, tau_step=0.1, sr_uncertainty_weight=0.8)
+    )
+    before = selector.temperature
+    selector.select(
+        armed=True,
+        mismatch=0.0,
+        feature_vector=[0.1, 0.2, 0.3],
+        sr_uncertainty=0.9,
+    )
+    assert selector.temperature > before
