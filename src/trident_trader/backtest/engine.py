@@ -11,6 +11,7 @@ from trident_trader.features.lambda_world import (
     lambda_score,
     spread_bps_from_bar,
 )
+from trident_trader.features.rolling_state import RollingFeatureState
 from trident_trader.world.consolidators import TimeBarConsolidator
 from trident_trader.world.schemas import Bar
 
@@ -38,8 +39,10 @@ class BacktestEngine:
         self.streams: dict[str, StreamState] = {}
         self.latest_medium: dict[str, Bar] = {}
         self.latest_slow: dict[str, Bar] = {}
+        self.rolling_state: dict[str, RollingFeatureState] = {}
 
         for symbol in symbols:
+            self.rolling_state[symbol] = RollingFeatureState(expected_period=periods["medium"])
             self.streams[symbol] = StreamState(
                 fast=TimeBarConsolidator(symbol=symbol, period=periods["fast"]),
                 medium=TimeBarConsolidator(
@@ -82,6 +85,7 @@ class BacktestEngine:
 
     def _on_medium(self, symbol: str, bar: Bar) -> None:
         self.latest_medium[symbol] = bar
+        self.rolling_state[symbol].update(ts=bar.ts, close=bar.close, volume=bar.volume)
         if len(self.latest_medium) != len(self.symbols):
             return
 
@@ -100,18 +104,32 @@ class BacktestEngine:
     def _lambda_gate(self) -> dict[str, object]:
         lambda_section = cast(LambdaConfig, self.lambda_cfg["lambda"])
         per_stream: dict[str, float] = {}
+        per_stream_inputs: dict[str, dict[str, float]] = {}
+
+        returns = [self.rolling_state[symbol].metrics().last_return for symbol in self.symbols]
+        ret_median = sorted(returns)[len(returns) // 2] if returns else 0.0
 
         for symbol, bar in self.latest_medium.items():
+            m = self.rolling_state[symbol].metrics()
+            corr_shock = abs(m.last_return - ret_median) * 100.0
             inp = LambdaInputs(
                 spread_bps=spread_bps_from_bar(bar),
-                volume_z=0.0,
-                gap_rate=0.0,
-                outlier_rate=0.0,
-                vol_of_vol=0.0,
-                corr_shock=0.0,
-                event_intensity_z=0.0,
+                volume_z=m.volume_z,
+                gap_rate=m.gap_rate,
+                outlier_rate=m.outlier_rate,
+                vol_of_vol=m.vol_of_vol,
+                corr_shock=corr_shock,
+                event_intensity_z=m.event_intensity_z,
             )
             per_stream[symbol] = lambda_score(inp, lambda_section)
+            per_stream_inputs[symbol] = {
+                "volume_z": m.volume_z,
+                "gap_rate": m.gap_rate,
+                "outlier_rate": m.outlier_rate,
+                "vol_of_vol": m.vol_of_vol,
+                "corr_shock": corr_shock,
+                "event_intensity_z": m.event_intensity_z,
+            }
 
         values = sorted(per_stream.values())
         median_idx = len(values) // 2
@@ -125,6 +143,7 @@ class BacktestEngine:
 
         return {
             "per_stream": per_stream,
+            "inputs": per_stream_inputs,
             "lambda_global": lambda_global,
             "good_streams": good_streams,
             "armed": armed,

@@ -101,3 +101,5 @@ def test_csv_ingestion_ordering_and_gate_flip() -> None:
         assert decisions[-1]["gate"]["armed"] is False
         assert decisions[0]["ts"].minute == 0
         assert decisions[-1]["ts"].minute == 0
+        assert "inputs" in decisions[-1]["gate"]
+        assert "gap_rate" in decisions[-1]["gate"]["inputs"]["A"]
